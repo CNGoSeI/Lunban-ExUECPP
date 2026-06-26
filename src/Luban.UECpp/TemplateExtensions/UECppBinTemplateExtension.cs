@@ -197,54 +197,14 @@ public class UECppBinTemplateExtension : ScriptObject
     }
 
     /// <summary>
-    /// Check if an integer field should be treated as unsigned based on naming convention.
-    /// Fields with names ending with "_uint" (case-insensitive) → unsigned integer type.
-    /// Note: "_uint32" is checked separately by IsUint32Field(), so fields ending
-    /// with "_uint32" are handled before this general "_uint" check.
-    /// </summary>
-    public static bool IsUintField(DefField field)
-    {
-        if (field == null) return false;
-        string name = field.Name;
-        return name.EndsWith("_uint", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Check if a long-typed field should be treated as uint32 based on naming convention.
-    /// Fields with names ending with "_uint32" (case-insensitive) → uint32 in UE.
-    /// This allows storing values &gt; int32.MaxValue in the Excel table (using long type)
-    /// while generating uint32 in the UE C++ code.
-    /// </summary>
-    public static bool IsUint32Field(DefField field)
-    {
-        if (field == null) return false;
-        string name = field.Name;
-        return name.EndsWith("_uint32", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
     /// Get the appropriate UE type name for a field.
     /// String fields ending with "_fname" are mapped to FName.
-    /// Integer fields ending with "_uint32" (long only) are mapped to uint32.
-    /// Integer fields ending with "_uint" are mapped to corresponding unsigned types.
     /// </summary>
     public static string GetFieldDeclType(TType type, DefField field)
     {
         if (IsNameField(field) && type is TString)
         {
             return "FName";
-        }
-        // _uint32 must be checked before _uint (suffix overlap)
-        if (IsUint32Field(field) && type is TLong)
-        {
-            return "uint32";
-        }
-        if (IsUintField(field))
-        {
-            if (type is TByte) return "uint8";
-            if (type is TShort) return "uint32";
-            if (type is TInt) return "uint32";
-            if (type is TLong) return "uint64";
         }
         return DeclaringTypeName(type);
     }

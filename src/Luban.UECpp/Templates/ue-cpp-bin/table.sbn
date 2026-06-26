@@ -16,40 +16,41 @@ struct {{ue_class_name}}
 {
     GENERATED_BODY()
 
-    UPROPERTY(BlueprintReadOnly, Category = "Luban")
-    TMap<{{get_field_decl_type __key_type __this.index_field}}, {{value_type}}> DataMap;
-
+    /** Primary data store — directly bindable to Blueprint ListView */
     UPROPERTY(BlueprintReadOnly, Category = "Luban")
     TArray<{{value_type}}> DataList;
+
+    /** Key → index lookup (not exposed to Blueprint — use Get/Contains instead) */
+    TMap<{{get_field_decl_type __key_type __this.index_field}}, int32> IndexMap;
 
     bool Load(FLubanArchive& Ar)
     {
         int32 n;
         Ar << n;
-        DataMap.Reserve(n);
         DataList.Reserve(n);
+        IndexMap.Reserve(n);
         for (int32 i = 0; i < n; ++i)
         {
             {{value_type}} _v;
             Ar << _v;
-            DataList.Add(_v);
-            DataMap.Add(_v.{{format_field_name __code_style __this.index_field.name}}, _v);
+            IndexMap.Add(_v.{{format_field_name __code_style __this.index_field.name}}, DataList.Num());
+            DataList.Add(MoveTemp(_v));
         }
         return true;
     }
 
-    FORCEINLINE const TMap<{{get_field_decl_type __key_type __this.index_field}}, {{value_type}}>& GetDataMap() const { return DataMap; }
     FORCEINLINE const TArray<{{value_type}}>& GetDataList() const { return DataList; }
 
-    {{value_type}} Get({{get_field_decl_type __key_type __this.index_field}} Key) const
+    /** Key lookup — returns nullptr if not found. Data lifetime equals table lifetime. */
+    const {{value_type}}* Get({{get_field_decl_type __key_type __this.index_field}} Key) const
     {
-        const {{value_type}}* Found = DataMap.Find(Key);
-        return Found ? *Found : {{value_type}}{};
+        const int32* Idx = IndexMap.Find(Key);
+        return Idx ? &DataList[*Idx] : nullptr;
     }
 
     bool Contains({{get_field_decl_type __key_type __this.index_field}} Key) const
     {
-        return DataMap.Contains(Key);
+        return IndexMap.Contains(Key);
     }
 };
 {{~else if __this.is_list_table~}}

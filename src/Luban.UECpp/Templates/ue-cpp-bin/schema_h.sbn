@@ -16,3 +16,43 @@ struct {{make_ue_full_name b.full_name}};
 {{~__table_codes~}}
 
 {{__tables_code}}
+
+//------------------------------------------------------------------------------
+// Blueprint Function Library — UFUNCTION wrappers for table key lookups
+// Note: UFUNCTION cannot return USTRUCT pointers — uses bool + OutValue pattern.
+//       For zero-copy C++ access, use Tables.TbXxx.Get(Key) → const T*.
+//------------------------------------------------------------------------------
+
+UCLASS()
+class ULubanBPFunctionLibrary : public UBlueprintFunctionLibrary
+{
+    GENERATED_BODY()
+
+public:
+{{~ for table in __ctx.export_tables ~}}
+{{~ if table.is_map_table ~}}
+    UFUNCTION(BlueprintPure, Category = "Luban|{{table.name}}")
+    static bool Find{{table.name}}(
+        const FTables& Table,
+        {{get_field_decl_type table.key_ttype table.index_field}} Key,
+        {{declaring_type_name table.value_ttype}}& OutValue)
+    {
+        if (const {{declaring_type_name table.value_ttype}}* Ptr = Table.{{table.name}}.Get(Key))
+        {
+            OutValue = *Ptr;
+            return true;
+        }
+        return false;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "Luban|{{table.name}}")
+    static bool Contains{{table.name}}(
+        const FTables& Table,
+        {{get_field_decl_type table.key_ttype table.index_field}} Key)
+    {
+        return Table.{{table.name}}.Contains(Key);
+    }
+
+{{~ end ~}}
+{{~ end ~}}
+};

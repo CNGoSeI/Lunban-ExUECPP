@@ -56,11 +56,6 @@
 | `string` | `FString` |
 | `string` + `_fname` 命名 | `FName`（自动检测） |
 | `datetime` | `int64` |
-| `byte` + `_uint` 命名 | `uint8`（不变） |
-| `short` + `_uint` 命名 | `uint32` |
-| `int` + `_uint` 命名 | `uint32` |
-| `long` + `_uint` 命名 | `uint64` |
-| `long` + `_uint32` 命名 | `uint32`（突破 int32 上限） |
 | `TArray` / `TList` | `TArray<T>` |
 | `TSet` | `TSet<T>` |
 | `TMap` | `TMap<K, V>` |
@@ -81,16 +76,29 @@ luban --conf game_config.xml -t default -c ue-cpp-bin -d bin
 
 将生成的文件放入 UE 项目的 `Source/YourModule/` 目录即可。
 
+**推荐目录结构：**
+
+```
+Source/YourModule/
+├── Public/Luban/Gen/
+│   └── Schema.h          ← 头文件放 Public 下，对外可见
+└── Private/Luban/Gen/
+    └── Schema_0.cpp      ← 实现文件放 Private 下
+```
+
+> **包含路径**：UE 模块默认将 `Public/` 加入头文件搜索路径，无需额外配置。如果生成目录不在 `Public/` 下方，需在 `YourModule.Build.cs` 中添加 `PublicIncludePaths.Add("...");`，确保 `#include "Schema.h"` 能被找到，同时 `.generated.h` 也能被 UHT 正确扫描。
+
 ## 设计决策
 
 1. **FLubanArchive 序列化**：使用 `friend FLubanArchive& operator<<` 在 UE 原生 `Ar << value` 语法下兼容 Luban 的 varint 变长编码二进制格式
 2. **值类型优先**：USTRUCT 按值持有，TArray/TMap 直接包含数据，不涉及手动内存管理
 3. **BlueprintType 标记**：所有结构体标记为 BlueprintType，可在蓝图中作为变量类型使用
-4. **UPROPERTY 暴露数据**：Table Manager 的 DataMap/DataList 通过 UPROPERTY 暴露，Blueprint 可直接读取
+4. **UPROPERTY 暴露数据**：Table Manager 的 DataList 通过 UPROPERTY 暴露，可直接绑定到 Blueprint 的 ListView 等控件
 5. **FName 自动检测**：根据字段命名约定自动将 `string` + `_fname` 后缀字段映射为 `FName`（如 `item_fname`、`display_fname`），详见 [FName 支持](#fname-支持) 章节
-6. **分片编译**：bean 数量超过阈值时自动拆分 .cpp，避免单文件过大
-7. **全局作用域命名**：由于 UE 5.6 UHT 不支持命名空间内的 UENUM/USTRUCT，所有类型放在全局作用域，命名空间路径编码为类型名后缀（`F{Name}_{Namespace}`、`E{Name}_{Namespace}`），详见 [UE 5.6 UHT 命名空间限制](#ue-56-uht-命名空间限制)
-8. **`.generated.h` 位置**：UE 5.6 要求 `#include "X.generated.h"` 放在头文件顶部（紧跟其他 include 之后），而非传统的文件末尾
+6. **TMap 索引存储**：Map 类型表不重复存储数据 —— TArray 存数据本体，TMap 只存 `Key → int32下标`（详见 [表存储架构](#表存储架构)）
+8. **分片编译**：bean 数量超过阈值时自动拆分 .cpp，避免单文件过大
+9. **全局作用域命名**：由于 UE 5.6 UHT 不支持命名空间内的 UENUM/USTRUCT，所有类型放在全局作用域，命名空间路径编码为类型名后缀（`F{Name}_{Namespace}`、`E{Name}_{Namespace}`），详见 [UE 5.6 UHT 命名空间限制](#ue-56-uht-命名空间限制)
+10. **`.generated.h` 位置**：UE 5.6 要求 `#include "X.generated.h"` 放在头文件顶部（紧跟其他 include 之后），而非传统的文件末尾
 
 ## UE 5.6 UHT 命名空间限制
 
@@ -169,49 +177,118 @@ USTRUCT 中: FName item_fname
 
 识别逻辑在 `UECppBinTemplateExtension.IsNameField()` 中实现。如果项目有自己的命名约定，可以修改该方法来适配。
 
-## 无符号整数支持
+## 表存储架构
 
-### 自动识别规则
+### Map 表（有主键）
 
-生成代码时，整数类型字段在指定条件下自动变为对应的无符号（unsigned）类型：
+数据**只存一份**在 TArray 中，TMap 仅存储 `Key → int32下标`：
 
-1. Luban 定义中字段类型为 **整数类型**（`byte`、`short`、`int`、`long`）
-2. 字段名以 **`_uint`** 结尾（不区分大小写）
+```cpp
+USTRUCT(BlueprintType)
+struct FTbTest_test
+{
+    /** 数据本体 — 直接绑定 Blueprint ListView */
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    TArray<FTest_test> DataList;
 
-### 类型映射
+    /** Key → 下标索引（不暴露蓝图，用 Get/Contains 查询） */
+    TMap<uint32, int32> IndexMap;
 
-| Luban 类型 | 后缀 | UE 类型 | 默认 UE 类型 |
+    bool Load(FLubanArchive& Ar)
+    {
+        // ...
+        IndexMap.Add(_v.Id_uint32, DataList.Num());  // 存下标
+        DataList.Add(MoveTemp(_v));                    // Move 不拷贝
+        // ...
+    }
+
+    FTest_test Get(uint32 Key) const
+    {
+        const int32* Idx = IndexMap.Find(Key);  // O(1) 哈希
+        return Idx ? DataList[*Idx] : FTest_test{}; // O(1) 下标取数据
+    }
+};
+```
+
+**内存对比：**
+
+| 方案 | 数据存储 | 查找结构 | 蓝图遍历 |
 |---|---|---|---|
-| `byte` | `_uint` | `uint8`（不变） | `uint8` |
-| `short` | `_uint` | `uint32` | `int32` |
-| `int` | `_uint` | `uint32` | `int32` |
-| `long` | `_uint` | `uint64` | `int64` |
-| `long` | **`_uint32`** | **`uint32`** | `int64` |
+| 旧版（双份） | TMap<K,V> + TArray<V> | DataMap 直接存 V | DataList（OK） |
+| **新版（索引）** | **TArray<V> 单份** | TMap<K,**int32**> 4字节下标 | DataList（OK） |
 
-> **`_uint32` 特别说明**：由于 Luban 的 `int` 类型本质是 int32，无法在 Excel 中写入超过 21.4 亿的值。当需要 `uint32` 类型且值可能超过 int32 上限时，使用 **`long` 类型 + `_uint32` 后缀**。`_uint32` 的检测优先级高于 `_uint`。
+对于大结构体或大表，索引方案可节省近 50% 内存；对于小表（几十行 × 十几个字段），差异可忽略。
 
-### 示例
+### List 表（无主键 / 联合主键）
 
-| 字段名 | Luban 类型 | 生成的 UE 类型 | 原因 |
-|---|---|---|---|
-| `Count` | `int` | `int32` | 不以 `_uint` 结尾 |
-| `count_uint` | `int` | `uint32` | 以 `_uint` 结尾 |
-| `LevelId` | `int` | `int32` | 不以 `_uint` 结尾 |
-| `raw_score_uint` | `int` | `uint32` | 以 `_uint` 结尾 |
-| `big_value_uint` | `long` | `uint64` | 以 `_uint` 结尾 |
-| **`big_id_uint32`** | `long` | **`uint32`** | 以 `_uint32` 结尾（long→uint32） |
-| `count_uint` | `float` | `float` | 非整数类型，不触发 |
+List 表仅保留 TArray，不做索引。联合主键表仍使用 TMap 存数据（按联合 key 查找，不暴露 DataList）。
 
-### 使用场景
+## Blueprint 函数库
 
-- **网络同步 ID**：服务器分发的唯一 ID 通常用无符号类型，避免负数
-- **位掩码字段**：需要用无符号类型保证位移操作的正确性
-- **协议兼容**：与外部系统对接时，无符号类型能更准确地表达数据语义
-- **`_uint32` 场景**：Excel 中的数据超出 int32 范围（如 30 亿），但又不需要 uint64 那么大
+### 背景
 
-### 自定义识别规则
+USTRUCT 不支持 `UFUNCTION` 宏，Map 表的 `Get()` / `Contains()` 方法无法被蓝图直接调用。通过生成一个 `UBlueprintFunctionLibrary` 类，以静态 `UFUNCTION(BlueprintPure)` 方法为每个 Map 表提供蓝图可用的查找接口。
 
-识别逻辑在 `UECppBinTemplateExtension.IsUintField()` 和 `IsUint32Field()` 中实现。如果项目有自己的命名约定，可以修改这些方法来适配。
+### 生成规则
+
+为每个 **Map 表**（存在唯一主键）生成 `Find` 和 `Contains` 两个静态蓝图函数：
+
+| 方法 | 返回 | 说明 |
+|---|---|---|
+| `Find{表名}` | `bool` | 按键查找，通过 `OutValue` 参数输出结果 |
+| `Contains{表名}` | `bool` | 检查 Key 是否存在 |
+
+### 蓝图使用
+
+```
+FindTbTest 节点（BlueprintPure）
+  ├─ Table    (FTables)        ← 传入根配置结构体
+  ├─ Key      (int32/FName/FString)
+  ├─ OutValue (FTest_test&)    ← 输出找到的数据行
+  └─ Return   (bool)           ← true=找到, false=未找到
+```
+
+蓝图调用流程：
+1. 拖入 `FindTbTest` 节点
+2. `Table` 引脚连到根 `FTables` 变量
+3. 填入查找的 `Key` 值
+4. 通过 `Return Value` 判断是否找到
+5. 从 `OutValue` 引脚读取数据
+
+### 生成代码示例
+
+```cpp
+UCLASS()
+class ULubanBPFunctionLibrary : public UBlueprintFunctionLibrary
+{
+    GENERATED_BODY()
+
+public:
+    UFUNCTION(BlueprintPure, Category = "Luban|TbTest")
+    static bool FindTbTest(
+        const FTables& Table,
+        int32 Key,
+        FTest_test& OutValue)
+    {
+        if (const FTest_test* Ptr = Table.TbTest.Get(Key))
+        {
+            OutValue = *Ptr;
+            return true;
+        }
+        return false;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "Luban|TbTest")
+    static bool ContainsTbTest(
+        const FTables& Table,
+        int32 Key)
+    {
+        return Table.TbTest.Contains(Key);
+    }
+};
+```
+
+> **C++ 调用**：直接使用 `Tables.TbTest.Get(Key)` 返回 `const T*` 零拷贝指针；蓝图通过函数库间接访问，内部发生一次值拷贝（`OutValue = *Ptr`）。
 
 ## 架构说明
 
