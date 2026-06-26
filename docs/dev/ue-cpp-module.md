@@ -88,6 +88,17 @@ Source/YourModule/
 
 > **包含路径**：UE 模块默认将 `Public/` 加入头文件搜索路径，无需额外配置。如果生成目录不在 `Public/` 下方，需在 `YourModule.Build.cs` 中添加 `PublicIncludePaths.Add("...");`，确保 `#include "Schema.h"` 能被找到，同时 `.generated.h` 也能被 UHT 正确扫描。
 
+### 运行时数据打包
+
+Luban 生成的 `.bytes` 文件不是 UE 资产（`.uasset`），不会自动打包进游戏。在 `Config/DefaultGame.ini` 中添加非资产目录：
+
+```ini
+[/Script/UnrealEd.ProjectPackagingSettings]
++DirectoriesToAlwaysStageAsNonUFS=(Path="Content/Data/LubanOutBin")
+```
+
+> 配置后打包时 `.bytes` 会被复制到包体中，运行时 `FFileHelper::LoadFileToArray` 读取路径 `Content/Data/LubanOutBin/{tablename}.bytes`。
+
 ## 设计决策
 
 1. **FLubanArchive 序列化**：使用 `friend FLubanArchive& operator<<` 在 UE 原生 `Ar << value` 语法下兼容 Luban 的 varint 变长编码二进制格式
