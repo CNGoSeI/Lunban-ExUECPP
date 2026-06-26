@@ -21,6 +21,7 @@
 using Luban.CodeFormat;
 using Luban.CodeTarget;
 using Luban.Defs;
+using Luban.Types;
 using Luban.UECpp.TemplateExtensions;
 using Scriban;
 using Scriban.Runtime;
@@ -71,6 +72,87 @@ public class UECppBinCodeTarget : TemplateCodeTargetBase
         ctx.PushGlobal(new UECppBinTemplateExtension());
     }
 
+    /// <summary>
+    /// Recursively collect all DefBean dependencies referenced by a TType.
+    /// Walks into TArray, TList, TSet, TMap, TBean.
+    /// </summary>
+    private static void CollectBeanDependencies(TType type, HashSet<DefBean> deps)
+    {
+        switch (type)
+        {
+            case TBean beanType:
+                deps.Add(beanType.DefBean);
+                break;
+            case TArray arrayType:
+                CollectBeanDependencies(arrayType.ElementType, deps);
+                break;
+            case TList listType:
+                CollectBeanDependencies(listType.ElementType, deps);
+                break;
+            case TSet setType:
+                CollectBeanDependencies(setType.ElementType, deps);
+                break;
+            case TMap mapType:
+                CollectBeanDependencies(mapType.KeyType, deps);
+                CollectBeanDependencies(mapType.ValueType, deps);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Topologically sort beans so that dependencies (referenced beans, parent types)
+    /// are emitted before the beans that depend on them.  UHT requires the full
+    /// USTRUCT definition of a type before it can be used as a UPROPERTY in another.
+    /// </summary>
+    private static List<DefBean> TopologicalSortBeans(List<DefBean> beans)
+    {
+        // Build dependency graph: bean → set of beans it depends on
+        var deps = new Dictionary<DefBean, HashSet<DefBean>>();
+        foreach (var bean in beans)
+        {
+            var beanDeps = new HashSet<DefBean>();
+            // Parent type (inheritance)
+            if (bean.ParentDefType != null && beans.Contains(bean.ParentDefType))
+            {
+                beanDeps.Add(bean.ParentDefType);
+            }
+            // Fields that reference other beans
+            foreach (var field in bean.HierarchyFields)
+            {
+                CollectBeanDependencies(field.CType, beanDeps);
+            }
+            // Only keep deps that are in the export list
+            beanDeps.RemoveWhere(b => !beans.Contains(b));
+            deps[bean] = beanDeps;
+        }
+
+        // DFS-based topological sort
+        var sorted = new List<DefBean>();
+        var permMarked = new HashSet<DefBean>();   // fully processed
+        var tempMarked = new HashSet<DefBean>();   // currently in stack (cycle detection)
+
+        void Visit(DefBean b)
+        {
+            if (permMarked.Contains(b)) return;
+            if (tempMarked.Contains(b)) return;     // circular — skip, already on stack
+            tempMarked.Add(b);
+            foreach (var dep in deps[b])
+            {
+                Visit(dep);
+            }
+            tempMarked.Remove(b);
+            permMarked.Add(b);
+            sorted.Add(b);
+        }
+
+        foreach (var bean in beans)
+        {
+            Visit(bean);
+        }
+
+        return sorted;
+    }
+
     private OutputFile GenerateSchemaHeader(GenerationContext ctx, string outputFileName, string schemaFileNameWithoutExt)
     {
         var enumTasks = new List<Task<string>>();
@@ -84,8 +166,10 @@ public class UECppBinCodeTarget : TemplateCodeTargetBase
             }));
         }
 
+        var sortedBeans = TopologicalSortBeans(ctx.ExportBeans);
+
         var beanTasks = new List<Task<string>>();
-        foreach (var bean in ctx.ExportBeans)
+        foreach (var bean in sortedBeans)
         {
             beanTasks.Add(Task.Run(() =>
             {
@@ -123,7 +207,7 @@ public class UECppBinCodeTarget : TemplateCodeTargetBase
             { "__bean_codes", string.Join('\n', beanTasks.Select(t => t.Result))},
             { "__table_codes", string.Join('\n', tableTasks.Select(t => t.Result))},
             { "__tables_code", tablesWriter.ToResult(null)},
-            { "__beans", ctx.ExportBeans},
+            { "__beans", sortedBeans},
             { "__code_style", CodeStyle},
             { "__schema_file_name", schemaFileNameWithoutExt },
         };
@@ -160,7 +244,7 @@ public class UECppBinCodeTarget : TemplateCodeTargetBase
         manifest.AddFile(GenerateSchemaHeader(ctx, schemaFileName, schemaFileNameWithoutExt));
 
         var cppTasks = new List<Task<OutputFile>>();
-        var beanTypes = ctx.ExportBeans;
+        var beanTypes = TopologicalSortBeans(ctx.ExportBeans);
 
         int typeCountPerStubFile = int.Parse(EnvManager.Current.GetOptionOrDefault(Name, "typeCountPerStubFile", true, "100"));
 

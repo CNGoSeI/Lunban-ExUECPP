@@ -158,6 +158,17 @@ public:
         return *this;
     }
 
+    /** Generic enum reader — reads underlying uint8 and casts to enum type */
+    template<typename TEnum>
+    typename TEnableIf<TIsEnum<TEnum>::Value, FLubanArchive&>::Type
+    operator<<(TEnum& Value)
+    {
+        uint8 Underlying = 0;
+        *this << Underlying;
+        Value = static_cast<TEnum>(Underlying);
+        return *this;
+    }
+
     /** Read a size prefix (varint-encoded, used for containers and strings) */
     int32 ReadSize()
     {
