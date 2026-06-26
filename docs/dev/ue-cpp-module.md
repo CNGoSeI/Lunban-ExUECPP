@@ -2,7 +2,7 @@
 
 ## 背景
 
-用户使用 **Unreal Engine 5.3+** 开发游戏，需要 Luban 生成的 C++ 代码符合 UE 生态规范。现有 `Luban.Cpp` 模块生成的是标准 C++ 代码（STL 容器、自定义 Luban 类型），无法直接用于 UE 项目（缺少 UE 宏、UE 容器类型）。
+用户使用 **Unreal Engine 5.3+** 开发游戏，需要 Luban 生成的 C++ 代码符合 UE 生态规范。现有 `Luban.Cpp` 模块生成的是标准 C++ 代码（STL 容器、自定义 Luban 类型），无法直接用于 UE 项目（缺少 UE 宏、UE 容器类型），UE5.3+支持。
 
 ## 本轮开发内容
 
