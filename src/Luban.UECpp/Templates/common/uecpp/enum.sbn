@@ -1,0 +1,26 @@
+{{~
+    comment = __enum.comment
+    items = __enum.items
+    has_zero = has_zero_item __enum
+    enum_full_name = __enum.namespace != "" ? __enum.namespace + "." + __enum.name : __enum.name
+~}}
+{{~if comment != '' ~}}
+/**
+ * {{escape_comment comment}}
+ */
+{{~end~}}
+UENUM(BlueprintType)
+enum class {{make_ue_full_enum_name enum_full_name}} : uint8
+{
+{{~if !has_zero~}}
+    None = 0 UMETA(Hidden, DisplayName = "None"),
+{{~end~}}
+    {{~ for item in items ~}}
+{{~if item.comment != '' ~}}
+    /**
+     * {{escape_comment item.comment_or_alias}}
+     */
+{{~end~}}
+    {{format_enum_item_name __code_style item.name}} = {{item.value}} UMETA(DisplayName = "{{item.alias_or_name}}"),
+    {{~end~}}
+};

@@ -1,0 +1,53 @@
+#include "{{__schema_header_file}}"
+#include "LubanArchive.h"
+
+{{~for bean in __beans~}}
+{{~
+    ue_class_name = make_ue_full_name bean.full_name
+~}}
+
+FLubanArchive& operator<<(FLubanArchive& Ar, {{ue_class_name}}& Value)
+{
+{{~if bean.parent_def_type~}}
+    Ar << static_cast<{{make_ue_full_name bean.parent_def_type.full_name}}&>(Value);
+{{~end~}}
+
+{{~ for field in bean.export_fields ~}}
+    {{deserialize 'Ar' ("Value." + (format_field_name __code_style field.name)) field.ctype}}
+{{~end~}}
+
+    return Ar;
+}
+
+{{~if bean.is_abstract_type~}}
+bool Load{{bean.name}}(FLubanArchive& Ar, {{ue_class_name}}*& OutPtr)
+{
+    int32 TypeId;
+    Ar << TypeId;
+    switch (TypeId)
+    {
+{{~for child in bean.hierarchy_not_abstract_children~}}
+        case {{make_ue_full_name child.full_name}}::__TypeId__:
+        {
+            OutPtr = new {{make_ue_full_name child.full_name}}();
+            Ar << *OutPtr;
+            return true;
+        }
+{{~end~}}
+        default:
+        {
+            OutPtr = nullptr;
+            return false;
+        }
+    }
+}
+{{~else~}}
+bool Load{{bean.name}}(FLubanArchive& Ar, {{ue_class_name}}*& OutPtr)
+{
+    OutPtr = new {{ue_class_name}}();
+    Ar << *OutPtr;
+    return true;
+}
+{{~end~}}
+
+{{~end~}}

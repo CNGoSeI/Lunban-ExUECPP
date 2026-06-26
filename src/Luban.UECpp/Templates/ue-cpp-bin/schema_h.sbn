@@ -1,0 +1,18 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "LubanArchive.h"
+
+#include "{{__schema_file_name}}.generated.h"
+
+{{__enum_codes~}}
+
+{{~for b in __beans~}}
+struct {{make_ue_full_name b.full_name}};
+{{~end~}}
+
+{{~__bean_codes~}}
+
+{{~__table_codes~}}
+
+{{__tables_code}}

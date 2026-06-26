@@ -1,0 +1,153 @@
+{{~
+    full_name = __namespace != "" ? __namespace + "." + __name : __name
+    ue_class_name = make_ue_full_name full_name
+    value_type = declaring_type_name __value_type
+~}}
+
+{{~if __this.comment != '' ~}}
+/**
+ * {{escape_comment __this.comment}}
+ */
+{{~end~}}
+
+{{~if __this.is_map_table ~}}
+USTRUCT(BlueprintType)
+struct {{ue_class_name}}
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    TMap<{{get_field_decl_type __key_type __this.index_field}}, {{value_type}}> DataMap;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    TArray<{{value_type}}> DataList;
+
+    bool Load(FLubanArchive& Ar)
+    {
+        int32 n;
+        Ar << n;
+        DataMap.Reserve(n);
+        DataList.Reserve(n);
+        for (int32 i = 0; i < n; ++i)
+        {
+            {{value_type}} _v;
+            Ar << _v;
+            DataList.Add(_v);
+            DataMap.Add(_v.{{format_field_name __code_style __this.index_field.name}}, _v);
+        }
+        return true;
+    }
+
+    FORCEINLINE const TMap<{{get_field_decl_type __key_type __this.index_field}}, {{value_type}}>& GetDataMap() const { return DataMap; }
+    FORCEINLINE const TArray<{{value_type}}>& GetDataList() const { return DataList; }
+
+    {{value_type}} Get({{get_field_decl_type __key_type __this.index_field}} Key) const
+    {
+        const {{value_type}}* Found = DataMap.Find(Key);
+        return Found ? *Found : {{value_type}}{};
+    }
+
+    bool Contains({{get_field_decl_type __key_type __this.index_field}} Key) const
+    {
+        return DataMap.Contains(Key);
+    }
+};
+{{~else if __this.is_list_table~}}
+USTRUCT(BlueprintType)
+struct {{ue_class_name}}
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    TArray<{{value_type}}> DataList;
+
+{{~if !__this.index_list.empty?~}}
+{{~for idx in __this.index_list~}}
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    TMap<{{declaring_type_name idx.type}}, {{value_type}}> DataMapBy{{format_field_name __code_style idx.index_field.name}};
+
+{{~end~}}
+{{~end~}}
+
+    bool Load(FLubanArchive& Ar)
+    {
+        int32 n;
+        Ar << n;
+        DataList.Reserve(n);
+{{~if !__this.index_list.empty?~}}
+{{~for idx in __this.index_list~}}
+        DataMapBy{{format_field_name __code_style idx.index_field.name}}.Reserve(n);
+{{~end~}}
+{{~end~}}
+        for (int32 i = 0; i < n; ++i)
+        {
+            {{value_type}} _v;
+            Ar << _v;
+            DataList.Add(_v);
+{{~if !__this.index_list.empty?~}}
+{{~for idx in __this.index_list~}}
+            DataMapBy{{format_field_name __code_style idx.index_field.name}}.Add(_v.{{format_field_name __code_style idx.index_field.name}}, _v);
+{{~end~}}
+{{~end~}}
+        }
+        return true;
+    }
+
+    FORCEINLINE const TArray<{{value_type}}>& GetDataList() const { return DataList; }
+
+{{~if !__this.index_list.empty?~}}
+{{~for idx in __this.index_list~}}
+    {{value_type}} GetBy{{format_field_name __code_style idx.index_field.name}}({{declaring_type_name idx.type}} Key) const
+    {
+        const {{value_type}}* Found = DataMapBy{{format_field_name __code_style idx.index_field.name}}.Find(Key);
+        return Found ? *Found : {{value_type}}{};
+    }
+
+    bool ContainsBy{{format_field_name __code_style idx.index_field.name}}({{declaring_type_name idx.type}} Key) const
+    {
+        return DataMapBy{{format_field_name __code_style idx.index_field.name}}.Contains(Key);
+    }
+{{~end~}}
+{{~else~}}
+    FORCEINLINE {{value_type}} Get(int32 Index) const
+    {
+        if (DataList.IsValidIndex(Index))
+        {
+            return DataList[Index];
+        }
+        return {{value_type}}{};
+    }
+
+    FORCEINLINE int32 Num() const { return DataList.Num(); }
+{{~end~}}
+};
+{{~else~}}
+USTRUCT(BlueprintType)
+struct {{ue_class_name}}
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    {{value_type}} Data;
+
+    bool Load(FLubanArchive& Ar)
+    {
+        int32 n;
+        Ar << n;
+        if (n != 1) return false;
+        Ar << Data;
+        return true;
+    }
+
+    FORCEINLINE {{value_type}} GetData() const { return Data; }
+
+{{~ for field in __value_type.def_bean.hierarchy_export_fields ~}}
+{{~if field.comment != '' ~}}
+    /**
+     * {{escape_comment field.comment}}
+     */
+{{~end~}}
+    FORCEINLINE {{get_field_decl_type field.ctype field}} Get{{format_field_name __code_style field.name}}() const { return Data.{{format_field_name __code_style field.name}}; }
+{{~end~}}
+};
+{{~end~}}

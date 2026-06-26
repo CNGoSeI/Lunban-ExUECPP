@@ -1,0 +1,52 @@
+USTRUCT(BlueprintType)
+struct {{make_ue_struct_name __name}}
+{
+    GENERATED_BODY()
+
+{{~for table in __tables ~}}
+{{~if table.comment != '' ~}}
+    /**
+     * {{escape_comment table.comment}}
+     */
+{{~end~}}
+    UPROPERTY(BlueprintReadOnly, Category = "Luban")
+    {{make_ue_full_name table.full_name}} {{table.name}};
+{{~end~}}
+
+    bool Load(FLubanArchive& Ar)
+    {
+{{~for table in __tables~}}
+        if (!{{table.name}}.Load(Ar))
+        {
+            return false;
+        }
+{{~end~}}
+        return true;
+    }
+
+    /** Load all tables via a callback that provides binary data by table name. */
+    bool Load(TFunction<bool(TArray<uint8>&, const FString&)> Loader)
+    {
+{{~for table in __tables~}}
+        {
+            TArray<uint8> Buf;
+            if (!Loader(Buf, TEXT("{{make_loader_table_name table.full_name}}")))
+            {
+                return false;
+            }
+            FLubanArchive Ar;
+            Ar.SetData(MoveTemp(Buf));
+            if (!{{table.name}}.Load(Ar))
+            {
+                return false;
+            }
+        }
+{{~end~}}
+        return true;
+    }
+
+{{~for table in __tables~}}
+    FORCEINLINE {{make_ue_full_name table.full_name}}& Get{{table.name}}Table() { return {{table.name}}; }
+    FORCEINLINE const {{make_ue_full_name table.full_name}}& Get{{table.name}}Table() const { return {{table.name}}; }
+{{~end~}}
+};

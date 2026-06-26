@@ -49,6 +49,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Luban.Dart", "Luban.Dart\Lu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Luban.Javascript", "Luban.Javascript\Luban.Javascript.csproj", "{583680B1-998E-CFD5-62EB-FE3D65A4D162}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Luban.UECpp", "Luban.UECpp\Luban.UECpp.csproj", "{DFDAFFE3-592B-3D5E-DA96-280BBAA95C4B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -147,6 +149,10 @@ Global
 		{583680B1-998E-CFD5-62EB-FE3D65A4D162}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{583680B1-998E-CFD5-62EB-FE3D65A4D162}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{583680B1-998E-CFD5-62EB-FE3D65A4D162}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DFDAFFE3-592B-3D5E-DA96-280BBAA95C4B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFDAFFE3-592B-3D5E-DA96-280BBAA95C4B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFDAFFE3-592B-3D5E-DA96-280BBAA95C4B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFDAFFE3-592B-3D5E-DA96-280BBAA95C4B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
